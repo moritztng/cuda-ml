@@ -3,7 +3,7 @@
 
 int main()
 {
-    Tensor<float> tensor{ Tensor<float>::random_normal(1, 2, {5, 5}) };
-    std::cout << tensor[{1, 1}].offset;
+    Tensor<float> tensor{ Tensor<float>::from_scalar(0, {3, 3, 3}) };
+    std::cout << tensor;
     return 0;
 }

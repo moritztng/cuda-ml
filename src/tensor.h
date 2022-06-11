@@ -3,6 +3,7 @@
 #include <functional>
 #include <algorithm>
 #include <random>
+#include <iostream>
 
 std::random_device device;
 std::mt19937 random_number_generator{ device() };
@@ -32,6 +33,11 @@ public:
     std::vector<int> strides{};
     const size_t n_elements{};
     const size_t size{};
+    T scalar() {
+        T scalar;
+        cudaMemcpy(&scalar, data + offset, sizeof(T), cudaMemcpyDeviceToHost);
+        return scalar;
+    }
     Tensor<T> operator[] (const std::vector<int>& indices) {
         const size_t index{ std::inner_product(strides.begin(), strides.end(), indices.begin(), static_cast<size_t>(0)) };
         Tensor<T> tensor{std::vector<int>(1, rank)};
@@ -39,6 +45,24 @@ public:
         tensor.offset = index;
         return tensor;
     }
+    friend std::ostream& operator<< (std::ostream& out, Tensor<T>& tensor) {
+        std::vector<int> indices(tensor.rank, 0);
+        out << std::string(tensor.rank, '[');
+        for (int i = 0; i < tensor.n_elements; ++i) {
+            out << tensor[indices].scalar() << ", ";
+            for (int j = tensor.rank - 1; j >= 0; --j) {
+                if (indices[j] < (tensor.shape[j] - 1)) {
+                    out << std::string(tensor.rank - 1 - j, '[');
+                    ++indices[j];
+                    break;
+                } else {
+                    out << "]";
+                    indices[j] = 0;
+                }
+            }
+        }   
+        return out;
+    };
     static Tensor<T> from_vector(const std::vector<T>& vector, const std::vector<int>& shape) {
         const Tensor<T> tensor{ shape };
         T* array = (T*)malloc(tensor.size);
