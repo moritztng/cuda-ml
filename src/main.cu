@@ -12,8 +12,8 @@ int main()
     Tensor<float> tensor_random_normal{ Tensor<float>::random_normal(0, 1, {10}) };
     std::cout << tensor_random_normal;
     std::cout << tensor_from_vector[{0, 0}] << '\n';
-    Tensor<float> tensor1{ Tensor<float>::from_scalar(1, {3, 3, 3}) };
-    Tensor<float> tensor2{ Tensor<float>::from_scalar(2, {3, 3, 3}) };
+    Tensor<float> tensor1{ Tensor<float>::from_scalar(1, {2, 2}) };
+    Tensor<float> tensor2{ Tensor<float>::from_scalar(2, {2, 2}) };
     Tensor<float> sum{ tensor1 + tensor2 };
     std::cout << sum;
     Tensor<float> difference{ tensor1 - tensor2 };
@@ -22,5 +22,7 @@ int main()
     std::cout << product;
     Tensor<float> quotient{ tensor1 / tensor2 };
     std::cout << quotient;
+    Tensor<float> matrix_product{ mm(tensor1, tensor2) };
+    std::cout << matrix_product;
     return 0;
 }

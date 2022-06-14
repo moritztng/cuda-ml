@@ -41,6 +41,23 @@ void divide(size_t n, T* tensor1, T* tensor2, T* quotient)
 }
 
 template <typename T>
+__global__
+void matrix_multiply(size_t height, size_t width, size_t shared_dim, T* tensor1, T* tensor2, T* matrix_product)
+{
+    const size_t row = blockIdx.x * blockDim.x + threadIdx.x;
+    const size_t column = blockIdx.y * blockDim.y + threadIdx.y;
+    if (row < height && column < width) {
+        const size_t tensor1_start = blockIdx.z * height * shared_dim + row * shared_dim;
+        const size_t tensor2_start = blockIdx.z * width * shared_dim + column;
+        T product{ 0 };
+        for (int i = 0; i < shared_dim; ++i) {
+            product += tensor1[tensor1_start + i] * tensor2[tensor2_start + i * width];
+        }
+        matrix_product[blockIdx.z * height * width + row * width + column] = product;
+    }
+}
+
+template <typename T>
 class Tensor {
 private:
     T* data{};
@@ -89,6 +106,19 @@ public:
         Tensor<T> quotient{ tensor1.shape };
         divide<T><<<(quotient.n_elements + 255) / 256, 256>>>(quotient.n_elements, tensor1.data, tensor2.data, quotient.data);
         return quotient;
+    }
+    friend Tensor<T> mm (const Tensor<T>& tensor1, const Tensor<T>& tensor2) {
+        std::vector<int> shape{ tensor1.shape };
+        shape.back() = tensor2.shape.back();
+        Tensor<T> matrix_product{ shape };
+        const size_t height = matrix_product.shape.end()[-2];
+        const size_t width = matrix_product.shape.end()[-1];
+        const size_t shared_dim = tensor1.shape.end()[-1];
+        const size_t batch_size = matrix_product.n_elements / (height * width);
+        dim3 block_dim(16, 16);
+        dim3 grid_dim((height + block_dim.x - 1) / block_dim.x, (width + block_dim.y - 1) / block_dim.y, batch_size);
+        matrix_multiply<T><<<grid_dim, block_dim>>>(height, width, shared_dim, tensor1.data, tensor2.data, matrix_product.data);
+        return matrix_product;
     }
     friend std::ostream& operator<< (std::ostream& out, Tensor<T>& tensor) {
         std::vector<int> indices(tensor.rank, 0);
