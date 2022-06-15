@@ -58,6 +58,14 @@ void matrix_multiply(size_t height, size_t width, size_t shared_dim, T* tensor1,
 }
 
 template <typename T>
+__global__
+void relu(size_t n, T* input, T* output)
+{
+  const int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i < n) output[i] = input[i] > 0 ? input[i] : 0;
+}
+
+template <typename T>
 class Tensor {
 private:
     T* data{};
@@ -119,6 +127,11 @@ public:
         dim3 grid_dim((height + block_dim.x - 1) / block_dim.x, (width + block_dim.y - 1) / block_dim.y, batch_size);
         matrix_multiply<T><<<grid_dim, block_dim>>>(height, width, shared_dim, tensor1.data, tensor2.data, matrix_product.data);
         return matrix_product;
+    }
+    friend Tensor<T> relu (const Tensor<T>& input) {
+        Tensor<T> output{ input.shape };
+        relu<T><<<(output.n_elements + 255) / 256, 256>>>(output.n_elements, input.data, output.data);
+        return output;
     }
     friend std::ostream& operator<< (std::ostream& out, Tensor<T>& tensor) {
         std::vector<int> indices(tensor.rank, 0);

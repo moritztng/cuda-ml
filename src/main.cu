@@ -24,5 +24,8 @@ int main()
     std::cout << quotient;
     Tensor<float> matrix_product{ mm(tensor1, tensor2) };
     std::cout << matrix_product;
+    Tensor<float> relu_input{ Tensor<float>::random_uniform(-10, 10, {3, 2, 2}) };
+    Tensor<float> relu_output{ relu(relu_input) };
+    std::cout << relu_output;
     return 0;
 }
