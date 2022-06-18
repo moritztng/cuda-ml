@@ -72,16 +72,16 @@ void divide(size_t n, size_t rank, size_t* tensor1_strides, size_t* tensor2_stri
 
 template <typename T>
 __global__
-void matrix_multiply(size_t height, size_t width, size_t shared_dim, T* tensor1, T* tensor2, T* matrix_product)
+void matrix_multiply(size_t rank, size_t height, size_t width, size_t shared_dim, size_t* tensor1_strides, size_t* tensor2_strides, T* tensor1, T* tensor2, T* matrix_product)
 {
     const size_t row = blockIdx.x * blockDim.x + threadIdx.x;
     const size_t column = blockIdx.y * blockDim.y + threadIdx.y;
     if (row < height && column < width) {
-        const size_t tensor1_start = blockIdx.z * height * shared_dim + row * shared_dim;
-        const size_t tensor2_start = blockIdx.z * width * shared_dim + column;
+        const size_t tensor1_start = blockIdx.z * height * shared_dim + row * tensor1_strides[rank - 2];
+        const size_t tensor2_start = blockIdx.z * width * shared_dim + column * tensor2_strides[rank - 1];
         T product{ 0 };
         for (int i = 0; i < shared_dim; ++i) {
-            product += tensor1[tensor1_start + i] * tensor2[tensor2_start + i * width];
+            product += tensor1[tensor1_start + i * tensor1_strides[rank - 1]] * tensor2[tensor2_start + i * tensor2_strides[rank - 2]];
         }
         matrix_product[blockIdx.z * height * width + row * width + column] = product;
     }
@@ -147,6 +147,14 @@ public:
         cudaMemcpy(&scalar, data + index, sizeof(T), cudaMemcpyDeviceToHost);
         return scalar;
     }
+    Tensor<T> transpose(size_t dim1, size_t dim2) const {
+        Tensor<T> transpose{ *this };
+        transpose.shape[dim1] = shape[dim2];
+        transpose.shape[dim2] = shape[dim1];
+        transpose.strides[dim1] = strides[dim2];
+        transpose.strides[dim2] = strides[dim1];
+        return transpose;
+    }
     friend Tensor<T> operator+ (const Tensor<T>& tensor1, const Tensor<T>& tensor2) {
         size_t* tensor1_strides{};
         size_t* tensor2_strides{};
@@ -191,9 +199,16 @@ public:
         const size_t width = matrix_product.shape.end()[-1];
         const size_t shared_dim = tensor1.shape.end()[-1];
         const size_t batch_size = matrix_product.n_elements / (height * width);
+        size_t* tensor1_strides{};
+        size_t* tensor2_strides{};
+        const size_t strides_size = matrix_product.rank * sizeof(size_t);
+        cudaMalloc(&tensor1_strides, strides_size);
+        cudaMalloc(&tensor2_strides, strides_size);
+        cudaMemcpy(tensor1_strides, &tensor1.strides[0], strides_size, cudaMemcpyHostToDevice);
+        cudaMemcpy(tensor2_strides, &tensor2.strides[0], strides_size, cudaMemcpyHostToDevice);
         dim3 block_dim(16, 16);
         dim3 grid_dim((height + block_dim.x - 1) / block_dim.x, (width + block_dim.y - 1) / block_dim.y, batch_size);
-        matrix_multiply<T><<<grid_dim, block_dim>>>(height, width, shared_dim, tensor1.data, tensor2.data, matrix_product.data);
+        matrix_multiply<T><<<grid_dim, block_dim>>>(matrix_product.rank, height, width, shared_dim, tensor1_strides, tensor2_strides, tensor1.data, tensor2.data, matrix_product.data);
         return matrix_product;
     }
     friend std::ostream& operator<< (std::ostream& out, Tensor<T>& tensor) {
