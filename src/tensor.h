@@ -88,6 +88,35 @@ void matrix_multiply(size_t rank, size_t height, size_t width, size_t shared_dim
 }
 
 template <typename T>
+__global__
+void negate(size_t n, T* input, T* output)
+{
+  const int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i < n) output[i] = -input[i];
+}
+
+template <typename T>
+__global__
+void sum(size_t n, T* input, T* output)
+{
+  T sum{ 0 };
+  for (int i = 0; i < n; ++i) {
+      sum += input[i];
+  }
+  output[0] = sum;
+}
+
+template <typename T>
+__global__
+void relu(size_t n, T* input, T* output)
+{
+  const int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i < n) output[i] = input[i] > 0 ? input[i] : 0;
+}
+
+template <typename T> class Tensor; 
+
+template <typename T>
 void prepare_broadcast(const Tensor<T>& tensor1, const Tensor<T>& tensor2, size_t** d_tensor1_strides, size_t** d_tensor2_strides, size_t** d_strides, Tensor<T>& sum){
     std::vector<int> shape{ tensor1.shape };
     size_t tensor1_strides[tensor1.rank]{ 0 };
@@ -146,6 +175,11 @@ public:
         const size_t index{ std::inner_product(strides.begin(), strides.end(), indices.begin(), static_cast<size_t>(0)) };
         cudaMemcpy(&scalar, data + index, sizeof(T), cudaMemcpyDeviceToHost);
         return scalar;
+    }
+    Tensor<T> operator-() const {
+        Tensor<T> negation{ shape };
+        negate<T><<<(n_elements + 255) / 256, 256>>>(n_elements, data, negation.data);
+        return negation;
     }
     Tensor<T> transpose(size_t dim1, size_t dim2) const {
         Tensor<T> transpose{ *this };
@@ -210,6 +244,16 @@ public:
         dim3 grid_dim((height + block_dim.x - 1) / block_dim.x, (width + block_dim.y - 1) / block_dim.y, batch_size);
         matrix_multiply<T><<<grid_dim, block_dim>>>(matrix_product.rank, height, width, shared_dim, tensor1_strides, tensor2_strides, tensor1.data, tensor2.data, matrix_product.data);
         return matrix_product;
+    }
+    friend Tensor<T> relu (const Tensor<T>& input) {
+        Tensor<T> output{ input.shape };
+        relu<T><<<(output.n_elements + 255) / 256, 256>>>(output.n_elements, input.data, output.data);
+        return output;
+    }
+    friend Tensor<T> sum (const Tensor<T>& input) {
+        Tensor<T> sum{ std::vector<int>(input.rank, 1) };
+        relu_d<T><<<1, 1>>>(input.n_elements, input.data, sum.data);
+        return sum;
     }
     friend std::ostream& operator<< (std::ostream& out, Tensor<T>& tensor) {
         std::vector<int> indices(tensor.rank, 0);
