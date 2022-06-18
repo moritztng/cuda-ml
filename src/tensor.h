@@ -8,36 +8,66 @@
 std::random_device device;
 std::mt19937 random_number_generator{ device() };
 
-template <typename T>
-__global__
-void add(size_t n, T* tensor1, T* tensor2, T* sum)
+__device__
+void get_indices(size_t index, size_t rank, size_t* strides1, size_t* strides2, size_t* strides, size_t* indices)
 {
-  const int i = blockIdx.x * blockDim.x + threadIdx.x;
-  if (i < n) sum[i] = tensor1[i] + tensor2[i];
+    size_t index_remainder = index;
+    indices[0] = 0;
+    indices[1] = 0;
+    for (int i = 0; i < rank; ++i) {
+        const size_t dim = index_remainder / strides[i];
+        index_remainder -= dim * strides[i];
+        indices[0] += dim * strides1[i];
+        indices[1] += dim * strides2[i];
+    }
 }
 
 template <typename T>
 __global__
-void subtract(size_t n, T* tensor1, T* tensor2, T* difference)
+void add(size_t n, size_t rank, size_t* tensor1_strides, size_t* tensor2_strides, size_t* strides, T* tensor1, T* tensor2, T* sum)
 {
-  const int i = blockIdx.x * blockDim.x + threadIdx.x;
-  if (i < n) difference[i] = tensor1[i] - tensor2[i];
+  const size_t index = blockIdx.x * blockDim.x + threadIdx.x;
+  if (index < n) {
+      size_t indices[2];
+      get_indices(index, rank, tensor1_strides, tensor2_strides, strides, indices);
+      sum[index] = tensor1[indices[0]] + tensor2[indices[1]];
+  }
 }
 
 template <typename T>
 __global__
-void multiply(size_t n, T* tensor1, T* tensor2, T* product)
+void subtract(size_t n, size_t rank, size_t* tensor1_strides, size_t* tensor2_strides, size_t* strides, T* tensor1, T* tensor2, T* difference)
 {
-  const int i = blockIdx.x * blockDim.x + threadIdx.x;
-  if (i < n) product[i] = tensor1[i] * tensor2[i];
+  const int index = blockIdx.x * blockDim.x + threadIdx.x;
+  if (index < n) {
+      size_t indices[2];
+      get_indices(index, rank, tensor1_strides, tensor2_strides, strides, indices);
+      difference[index] = tensor1[indices[0]] - tensor2[indices[1]];
+  }
 }
 
 template <typename T>
 __global__
-void divide(size_t n, T* tensor1, T* tensor2, T* quotient)
+void multiply(size_t n, size_t rank, size_t* tensor1_strides, size_t* tensor2_strides, size_t* strides, T* tensor1, T* tensor2, T* product)
 {
-  const int i = blockIdx.x * blockDim.x + threadIdx.x;
-  if (i < n) quotient[i] = tensor1[i] / tensor2[i];
+  const size_t index = blockIdx.x * blockDim.x + threadIdx.x;
+  if (index < n) {
+      size_t indices[2];
+      get_indices(index, rank, tensor1_strides, tensor2_strides, strides, indices);
+      product[index] = tensor1[indices[0]] * tensor2[indices[1]];
+  }
+}
+
+template <typename T>
+__global__
+void divide(size_t n, size_t rank, size_t* tensor1_strides, size_t* tensor2_strides, size_t* strides, T* tensor1, T* tensor2, T* quotient)
+{
+  const size_t index = blockIdx.x * blockDim.x + threadIdx.x;
+  if (index < n) {
+      size_t indices[2];
+      get_indices(index, rank, tensor1_strides, tensor2_strides, strides, indices);
+      quotient[index] = tensor1[indices[0]] / tensor2[indices[1]];
+  }
 }
 
 template <typename T>
@@ -58,17 +88,45 @@ void matrix_multiply(size_t height, size_t width, size_t shared_dim, T* tensor1,
 }
 
 template <typename T>
-__global__
-void relu(size_t n, T* input, T* output)
-{
-  const int i = blockIdx.x * blockDim.x + threadIdx.x;
-  if (i < n) output[i] = input[i] > 0 ? input[i] : 0;
+void prepare_broadcast(const Tensor<T>& tensor1, const Tensor<T>& tensor2, size_t** d_tensor1_strides, size_t** d_tensor2_strides, size_t** d_strides, Tensor<T>& sum){
+    std::vector<int> shape{ tensor1.shape };
+    size_t tensor1_strides[tensor1.rank]{ 0 };
+    size_t tensor2_strides[tensor2.rank]{ 0 };
+    for (int i = 0; i < tensor1.rank; ++i) {
+        if (tensor1.shape[i] == tensor2.shape[i]) {
+            tensor1_strides[i] = tensor1.strides[i];
+            tensor2_strides[i] = tensor2.strides[i];
+        }
+        else if (tensor1.shape[i] > tensor2.shape[i]) {
+            tensor1_strides[i] = tensor1.strides[i];
+        }
+        else {
+            tensor2_strides[i] = tensor2.strides[i];
+            shape[i] = tensor2.shape[i];
+        }
+
+    }
+    sum = Tensor<T>{ shape };
+    const size_t strides_size = sum.rank * sizeof(size_t);
+    cudaMalloc(d_strides, strides_size);
+    cudaMalloc(d_tensor1_strides, strides_size);
+    cudaMalloc(d_tensor2_strides, strides_size);
+    cudaMemcpy(*d_strides, &sum.strides[0], strides_size, cudaMemcpyHostToDevice);
+    cudaMemcpy(*d_tensor1_strides, tensor1_strides, strides_size, cudaMemcpyHostToDevice);
+    cudaMemcpy(*d_tensor2_strides, tensor2_strides, strides_size, cudaMemcpyHostToDevice);
 }
 
 template <typename T>
 class Tensor {
 private:
     T* data{};
+public:
+    std::vector<int> shape{};
+    size_t rank{};
+    std::vector<size_t> strides{};
+    size_t n_elements{};
+    size_t size{};
+    Tensor() = default;
     Tensor(const std::vector<int>& shape) :
         shape{ shape },
         rank{ shape.size() },
@@ -83,12 +141,6 @@ private:
             stride *= shape[i];
         }
     }
-public:
-    std::vector<int> shape{};
-    const size_t rank{};
-    std::vector<size_t> strides{};
-    const size_t n_elements{};
-    const size_t size{};
     T operator[] (const std::vector<int>& indices) {
         T scalar;
         const size_t index{ std::inner_product(strides.begin(), strides.end(), indices.begin(), static_cast<size_t>(0)) };
@@ -96,23 +148,39 @@ public:
         return scalar;
     }
     friend Tensor<T> operator+ (const Tensor<T>& tensor1, const Tensor<T>& tensor2) {
-        Tensor<T> sum{ tensor1.shape };
-        add<T><<<(sum.n_elements + 255) / 256, 256>>>(sum.n_elements, tensor1.data, tensor2.data, sum.data);
+        size_t* tensor1_strides{};
+        size_t* tensor2_strides{};
+        size_t* strides{};
+        Tensor<T> sum{};
+        prepare_broadcast<T>(tensor1, tensor2, &tensor1_strides, &tensor2_strides, &strides, sum);
+        add<T><<<(sum.n_elements + 255) / 256, 256>>>(sum.n_elements, sum.rank, tensor1_strides, tensor2_strides, strides, tensor1.data, tensor2.data, sum.data);
         return sum;
     }
     friend Tensor<T> operator- (const Tensor<T>& tensor1, const Tensor<T>& tensor2) {
-        Tensor<T> difference{ tensor1.shape };
-        subtract<T><<<(difference.n_elements + 255) / 256, 256>>>(difference.n_elements, tensor1.data, tensor2.data, difference.data);
+        size_t* tensor1_strides{};
+        size_t* tensor2_strides{};
+        size_t* strides{};
+        Tensor<T> difference{};
+        prepare_broadcast<T>(tensor1, tensor2, &tensor1_strides, &tensor2_strides, &strides, difference);
+        subtract<T><<<(difference.n_elements + 255) / 256, 256>>>(difference.n_elements, difference.rank, tensor1_strides, tensor2_strides, strides, tensor1.data, tensor2.data, difference.data);
         return difference;
     }
     friend Tensor<T> operator* (const Tensor<T>& tensor1, const Tensor<T>& tensor2) {
-        Tensor<T> product{ tensor1.shape };
-        multiply<T><<<(product.n_elements + 255) / 256, 256>>>(product.n_elements, tensor1.data, tensor2.data, product.data);
+        size_t* tensor1_strides{};
+        size_t* tensor2_strides{};
+        size_t* strides{};
+        Tensor<T> product{};
+        prepare_broadcast<T>(tensor1, tensor2, &tensor1_strides, &tensor2_strides, &strides, product);
+        multiply<T><<<(product.n_elements + 255) / 256, 256>>>(product.n_elements, product.rank, tensor1_strides, tensor2_strides, strides, tensor1.data, tensor2.data, product.data);
         return product;
     }
     friend Tensor<T> operator/ (const Tensor<T>& tensor1, const Tensor<T>& tensor2) {
-        Tensor<T> quotient{ tensor1.shape };
-        divide<T><<<(quotient.n_elements + 255) / 256, 256>>>(quotient.n_elements, tensor1.data, tensor2.data, quotient.data);
+        size_t* tensor1_strides{};
+        size_t* tensor2_strides{};
+        size_t* strides{};
+        Tensor<T> quotient{};
+        prepare_broadcast<T>(tensor1, tensor2, &tensor1_strides, &tensor2_strides, &strides, quotient);
+        divide<T><<<(quotient.n_elements + 255) / 256, 256>>>(quotient.n_elements, quotient.rank, tensor1_strides, tensor2_strides, strides, tensor1.data, tensor2.data, quotient.data);
         return quotient;
     }
     friend Tensor<T> mm (const Tensor<T>& tensor1, const Tensor<T>& tensor2) {
@@ -127,11 +195,6 @@ public:
         dim3 grid_dim((height + block_dim.x - 1) / block_dim.x, (width + block_dim.y - 1) / block_dim.y, batch_size);
         matrix_multiply<T><<<grid_dim, block_dim>>>(height, width, shared_dim, tensor1.data, tensor2.data, matrix_product.data);
         return matrix_product;
-    }
-    friend Tensor<T> relu (const Tensor<T>& input) {
-        Tensor<T> output{ input.shape };
-        relu<T><<<(output.n_elements + 255) / 256, 256>>>(output.n_elements, input.data, output.data);
-        return output;
     }
     friend std::ostream& operator<< (std::ostream& out, Tensor<T>& tensor) {
         std::vector<int> indices(tensor.rank, 0);
