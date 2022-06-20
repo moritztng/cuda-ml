@@ -31,5 +31,13 @@ int main()
     Tensor<float> broadcast_tensor2{ Tensor<float>::from_scalar(2, {3, 3, 3}) };
     Tensor<float> broadcast_sum{ broadcast_tensor1 + broadcast_tensor2 };
     std::cout << broadcast_sum;
+    Tensor<float> tensor1_backward{ Tensor<float>::from_scalar(1, {2, 2}) };
+    tensor1_backward.requires_gradients();
+    Tensor<float> tensor2_backward{ Tensor<float>::from_scalar(2, {2, 2}) };
+    Tensor<float> product_backward{ tensor1_backward * tensor2_backward };
+    Tensor<float> gradient{ Tensor<float>::from_scalar(1, {1, 1}) };
+    (*product_backward.backward)(gradient);
+    Tensor<float> gradients{ tensor1_backward.gradients() };
+    std::cout << gradients;
     return 0;
 }

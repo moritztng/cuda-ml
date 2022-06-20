@@ -5,6 +5,9 @@
 #include <random>
 #include <iostream>
 
+template <typename T> class Tensor; 
+template <typename T> class Backward; 
+
 std::random_device device;
 std::mt19937 random_number_generator{ device() };
 
@@ -114,7 +117,45 @@ void relu(size_t n, T* input, T* output)
   if (i < n) output[i] = input[i] > 0 ? input[i] : 0;
 }
 
-template <typename T> class Tensor; 
+template <typename T>
+__global__
+void relu_d(size_t n, T* input, T* output)
+{
+  const int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i < n) output[i] = input[i] > 0 ? 1 : 0;
+}
+
+template <typename T>
+class Backward
+{
+public:
+    std::vector<Tensor<T>> tensors{};
+    const std::vector<Backward<T>*> backwards{};
+    Backward() = default;
+    Backward(const std::vector<Backward<T>*>& backwards) : backwards{ backwards } {}
+    Backward(const std::vector<Tensor<T>>& tensors, const std::vector<Backward<T>*>& backwards) : tensors{ tensors }, backwards{ backwards } {}
+    virtual void operator() (const Tensor<T>& gradients) {}
+};
+
+template <typename T>
+class AccumulateGradients : public Backward<T>
+{
+public:
+    virtual void operator() (const Tensor<T>& gradients) {
+        this->tensors.push_back(gradients);
+    }
+};
+
+template <typename T>
+class MultiplyBackward : public Backward<T>
+{
+public:
+    MultiplyBackward(const std::vector<Tensor<T>>& tensors, const std::vector<Backward<T>*>& backwards) : Backward<T>{ tensors, backwards } {}
+    virtual void operator() (const Tensor<T>& gradients) {
+        if (this->backwards[0]) (*this->backwards[0])(gradients * this->tensors[1]);
+        if (this->backwards[1]) (*this->backwards[1])(gradients * this->tensors[0]);
+    }
+};
 
 template <typename T>
 void prepare_broadcast(const Tensor<T>& tensor1, const Tensor<T>& tensor2, size_t** d_tensor1_strides, size_t** d_tensor2_strides, size_t** d_strides, Tensor<T>& sum){
@@ -155,6 +196,7 @@ public:
     std::vector<size_t> strides{};
     size_t n_elements{};
     size_t size{};
+    Backward<T>* backward{};
     Tensor() = default;
     Tensor(const std::vector<int>& shape) :
         shape{ shape },
@@ -189,6 +231,12 @@ public:
         transpose.strides[dim2] = strides[dim1];
         return transpose;
     }
+    Tensor<T> gradients() const {
+        return backward->tensors[0];
+    }
+    void requires_gradients() {
+        backward = new AccumulateGradients<T>{};
+    }
     friend Tensor<T> operator+ (const Tensor<T>& tensor1, const Tensor<T>& tensor2) {
         size_t* tensor1_strides{};
         size_t* tensor2_strides{};
@@ -214,6 +262,7 @@ public:
         Tensor<T> product{};
         prepare_broadcast<T>(tensor1, tensor2, &tensor1_strides, &tensor2_strides, &strides, product);
         multiply<T><<<(product.n_elements + 255) / 256, 256>>>(product.n_elements, product.rank, tensor1_strides, tensor2_strides, strides, tensor1.data, tensor2.data, product.data);
+        product.backward = new MultiplyBackward<T>{ {tensor1, tensor2}, {tensor1.backward, tensor2.backward} };
         return product;
     }
     friend Tensor<T> operator/ (const Tensor<T>& tensor1, const Tensor<T>& tensor2) {
@@ -248,6 +297,11 @@ public:
     friend Tensor<T> relu (const Tensor<T>& input) {
         Tensor<T> output{ input.shape };
         relu<T><<<(output.n_elements + 255) / 256, 256>>>(output.n_elements, input.data, output.data);
+        return output;
+    }
+    friend Tensor<T> relu_d (const Tensor<T>& input) {
+        Tensor<T> output{ input.shape };
+        relu_d<T><<<(output.n_elements + 255) / 256, 256>>>(output.n_elements, input.data, output.data);
         return output;
     }
     friend Tensor<T> sum (const Tensor<T>& input) {
