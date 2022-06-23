@@ -23,29 +23,29 @@ Tensor SubtractBackward::backward(const Tensor& gradients, size_t input_index) c
 }
 
 MultiplyBackward::MultiplyBackward(const std::vector<Tensor>& tensors, const std::vector<Backward*>& backwards) : Backward{ backwards } {
-    if (backwards[1]) tensors.push_back(tensors[0]); 
-    if (backwards[0]) tensors.push_back(tensors[1]); 
+    if (backwards[1]) this->tensors.push_back(tensors[0]); 
+    if (backwards[0]) this->tensors.push_back(tensors[1]); 
 }
 Tensor MultiplyBackward::backward(const Tensor& gradients, size_t input_index) const {
     return gradients * tensors[input_index ? 0 : tensors.size() - 1];
 }
 
-SumBackward::SumBackward(Backward* backward) : Backward{ {backward} } {}
-
 MatrixMultiplyBackward::MatrixMultiplyBackward(const std::vector<Tensor>& tensors, const std::vector<Backward*>& backwards) : Backward{ backwards } {
-    if (backwards[1]) tensors.push_back(tensors[0]); 
-    if (backwards[0]) tensors.push_back(tensors[1]); 
+    if (backwards[1]) this->tensors.push_back(tensors[0]); 
+    if (backwards[0]) this->tensors.push_back(tensors[1]); 
 }
 Tensor MatrixMultiplyBackward::backward(const Tensor& gradients, size_t input_index) const {
     return mm(gradients, tensors[input_index ? 0 : tensors.size() - 1].transpose(tensors[0].rank - 1, tensors[0].rank - 2));
 }
 
-ReluBackward::ReluBackward(const Tensor& tensor, Backward* backward) : Backward{ {tensor}, {backward} } {}
-Tensor ReluBackward::backward(const Tensor& gradients, size_t input_index) const {
-    return gradients * relu_d(tensors[0]);
-}
-
 NegateBackward::NegateBackward(Backward* backward) : Backward{ {backward} } {}
 Tensor NegateBackward::backward(const Tensor& gradients, size_t input_index) const {
     return -gradients;
+}
+
+SumBackward::SumBackward(Backward* backward) : Backward{ {backward} } {}
+
+ReluBackward::ReluBackward(const Tensor& tensor, Backward* backward) : Backward{ {tensor}, {backward} } {}
+Tensor ReluBackward::backward(const Tensor& gradients, size_t input_index) const {
+    return gradients * relu_d(tensors[0]);
 }

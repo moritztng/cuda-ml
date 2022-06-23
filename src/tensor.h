@@ -1,10 +1,6 @@
 #pragma once
 
 #include <vector>
-#include <numeric>
-#include <functional>
-#include <algorithm>
-#include <random>
 #include <iostream>
 
 class Backward;
@@ -40,5 +36,3 @@ public:
     static Tensor random_uniform(float min, float max, const std::vector<int>& shape);
     static Tensor random_normal(float mean, float standard_deviation, const std::vector<int>& shape);
 };
-
-void prepare_broadcast(const Tensor& tensor1, const Tensor& tensor2, size_t** d_tensor1_strides, size_t** d_tensor2_strides, size_t** d_strides, Tensor& sum);

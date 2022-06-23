@@ -45,12 +45,6 @@ private:
     virtual Tensor backward(const Tensor& gradients, size_t input_index) const;
 };
 
-class SumBackward : public Backward
-{
-public:
-    SumBackward(Backward* backward);
-};
-
 class MatrixMultiplyBackward : public Backward
 {
 public:
@@ -59,18 +53,24 @@ private:
     virtual Tensor backward(const Tensor& gradients, size_t input_index) const;
 };
 
-class ReluBackward : public Backward
-{
-public:
-    ReluBackward(const Tensor& tensor, Backward* backward);
-private:
-    virtual Tensor backward(const Tensor& gradients, size_t input_index) const;
-};
-
 class NegateBackward : public Backward
 {
 public:
     NegateBackward(Backward* backward);
+private:
+    virtual Tensor backward(const Tensor& gradients, size_t input_index) const;
+};
+
+class SumBackward : public Backward
+{
+public:
+    SumBackward(Backward* backward);
+};
+
+class ReluBackward : public Backward
+{
+public:
+    ReluBackward(const Tensor& tensor, Backward* backward);
 private:
     virtual Tensor backward(const Tensor& gradients, size_t input_index) const;
 };

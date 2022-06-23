@@ -1,6 +1,11 @@
+#include <numeric>
+#include <functional>
+#include <algorithm>
+#include <random>
 #include "tensor.h"
 #include "kernels.h"
 #include "autodiff.h"
+#include "utils.h"
 
 std::random_device device;
 std::mt19937 random_number_generator{ device() };
@@ -20,18 +25,21 @@ Tensor::Tensor(const std::vector<int>& shape) :
         stride *= shape[i];
     }
 }
+
 float Tensor::operator[] (const std::vector<int>& indices) {
     float scalar;
     const size_t index{ std::inner_product(strides.begin(), strides.end(), indices.begin(), static_cast<size_t>(0)) };
     cudaMemcpy(&scalar, data + index, sizeof(float), cudaMemcpyDeviceToHost);
     return scalar;
 }
+
 Tensor Tensor::operator-() const {
     Tensor negation{ shape };
     negate<<<(n_elements + 255) / 256, 256>>>(n_elements, data, negation.data);
     if (backward) negation.backward = new NegateBackward{ backward };
     return negation;
 }
+
 Tensor Tensor::transpose(size_t dim1, size_t dim2) const {
     Tensor transpose{ *this };
     transpose.shape[dim1] = shape[dim2];
@@ -40,12 +48,57 @@ Tensor Tensor::transpose(size_t dim1, size_t dim2) const {
     transpose.strides[dim2] = strides[dim1];
     return transpose;
 }
+
 Tensor Tensor::gradients() const {
     return backward->tensors[0];
 }
+
 void Tensor::requires_gradients() {
     backward = new AccumulateGradients{};
 }
+
+Tensor Tensor::from_vector(const std::vector<float>& vector, const std::vector<int>& shape) {
+    Tensor tensor{ shape };
+    float* array = (float*)malloc(tensor.size);
+    std::copy(vector.begin(), vector.end(), array);
+    cudaMemcpy(tensor.data, array, tensor.size, cudaMemcpyHostToDevice);
+    free(array);
+    return tensor;
+}
+
+Tensor Tensor::from_scalar(float scalar, const std::vector<int>& shape) {
+    Tensor tensor{ shape };
+    float* array = (float*)malloc(tensor.size);
+    std::fill_n(array, tensor.n_elements, scalar);
+    cudaMemcpy(tensor.data, array, tensor.size, cudaMemcpyHostToDevice);
+    free(array);
+    return tensor;    
+}
+
+Tensor Tensor::random_uniform(float min, float max, const std::vector<int>& shape) {
+    Tensor tensor{ shape };
+    float* array = (float*)malloc(tensor.size);
+    std::uniform_real_distribution<float> distribution{ min, max };
+    for (int i = 0; i < tensor.n_elements; ++i) {
+        array[i] = distribution(random_number_generator);
+    }
+    cudaMemcpy(tensor.data, array, tensor.size, cudaMemcpyHostToDevice);
+    free(array);
+    return tensor;    
+}
+
+Tensor Tensor::random_normal(float mean, float standard_deviation, const std::vector<int>& shape) {
+    Tensor tensor{ shape };
+    float* array = (float*)malloc(tensor.size);
+    std::normal_distribution<float> distribution{ mean, standard_deviation };
+    for (int i = 0; i < tensor.n_elements; ++i) {
+        array[i] = distribution(random_number_generator);
+    }
+    cudaMemcpy(tensor.data, array, tensor.size, cudaMemcpyHostToDevice);
+    free(array);
+    return tensor;
+}
+
 Tensor operator+ (const Tensor& tensor1, const Tensor& tensor2) {
     size_t* tensor1_strides{};
     size_t* tensor2_strides{};
@@ -56,6 +109,7 @@ Tensor operator+ (const Tensor& tensor1, const Tensor& tensor2) {
     if (tensor1.backward || tensor2.backward) sum.backward = new AddBackward{ {tensor1.backward, tensor2.backward} };
     return sum;
 }
+
 Tensor operator- (const Tensor& tensor1, const Tensor& tensor2) {
     size_t* tensor1_strides{};
     size_t* tensor2_strides{};
@@ -67,6 +121,7 @@ Tensor operator- (const Tensor& tensor1, const Tensor& tensor2) {
     return difference;
 
 }
+
 Tensor operator* (const Tensor& tensor1, const Tensor& tensor2) {
     size_t* tensor1_strides{};
     size_t* tensor2_strides{};
@@ -77,6 +132,7 @@ Tensor operator* (const Tensor& tensor1, const Tensor& tensor2) {
     if (tensor1.backward || tensor2.backward) product.backward = new MultiplyBackward{ {tensor1, tensor2}, {tensor1.backward, tensor2.backward} };
     return product;
 }
+
 Tensor operator/ (const Tensor& tensor1, const Tensor& tensor2) {
     size_t* tensor1_strides{};
     size_t* tensor2_strides{};
@@ -86,6 +142,7 @@ Tensor operator/ (const Tensor& tensor1, const Tensor& tensor2) {
     divide<<<(quotient.n_elements + 255) / 256, 256>>>(quotient.n_elements, quotient.rank, tensor1_strides, tensor2_strides, strides, tensor1.data, tensor2.data, quotient.data);
     return quotient;
 }
+
 Tensor mm (const Tensor& tensor1, const Tensor& tensor2) {
     std::vector<int> shape{ tensor1.shape };
     shape.back() = tensor2.shape.back();
@@ -107,23 +164,27 @@ Tensor mm (const Tensor& tensor1, const Tensor& tensor2) {
     if (tensor1.backward || tensor2.backward) matrix_product.backward = new MatrixMultiplyBackward{ {tensor1, tensor2}, {tensor1.backward, tensor2.backward} };
     return matrix_product;
 }
+
 Tensor relu (const Tensor& input) {
     Tensor output{ input.shape };
     relu<<<(output.n_elements + 255) / 256, 256>>>(output.n_elements, input.data, output.data);
     if (input.backward) output.backward = new ReluBackward{ input, input.backward };
     return output;
 }
+
 Tensor relu_d (const Tensor& input) {
     Tensor output{ input.shape };
     relu_d<<<(output.n_elements + 255) / 256, 256>>>(output.n_elements, input.data, output.data);
     return output;
 }
+
 Tensor sum (const Tensor& input) {
     Tensor output{ std::vector<int>(input.rank, 1) };
     sum<<<1, 1>>>(input.n_elements, input.data, output.data);
     if (input.backward) output.backward = new SumBackward{ input.backward };
     return output;
 }
+
 std::ostream& operator<< (std::ostream& out, Tensor& tensor) {
     std::vector<int> indices(tensor.rank, 0);
     out << std::string(tensor.rank, '[');
@@ -152,70 +213,4 @@ std::ostream& operator<< (std::ostream& out, Tensor& tensor) {
     out << "size = " << tensor.size << ", ";
     out << '\n';
     return out;
-}
-Tensor Tensor::from_vector(const std::vector<float>& vector, const std::vector<int>& shape) {
-    Tensor tensor{ shape };
-    float* array = (float*)malloc(tensor.size);
-    std::copy(vector.begin(), vector.end(), array);
-    cudaMemcpy(tensor.data, array, tensor.size, cudaMemcpyHostToDevice);
-    free(array);
-    return tensor;
-}
-Tensor Tensor::from_scalar(float scalar, const std::vector<int>& shape) {
-    Tensor tensor{ shape };
-    float* array = (float*)malloc(tensor.size);
-    std::fill_n(array, tensor.n_elements, scalar);
-    cudaMemcpy(tensor.data, array, tensor.size, cudaMemcpyHostToDevice);
-    free(array);
-    return tensor;    
-}
-Tensor Tensor::random_uniform(float min, float max, const std::vector<int>& shape) {
-    Tensor tensor{ shape };
-    float* array = (float*)malloc(tensor.size);
-    std::uniform_real_distribution<float> distribution{ min, max };
-    for (int i = 0; i < tensor.n_elements; ++i) {
-        array[i] = distribution(random_number_generator);
-    }
-    cudaMemcpy(tensor.data, array, tensor.size, cudaMemcpyHostToDevice);
-    free(array);
-    return tensor;    
-}
-Tensor Tensor::random_normal(float mean, float standard_deviation, const std::vector<int>& shape) {
-    Tensor tensor{ shape };
-    float* array = (float*)malloc(tensor.size);
-    std::normal_distribution<float> distribution{ mean, standard_deviation };
-    for (int i = 0; i < tensor.n_elements; ++i) {
-        array[i] = distribution(random_number_generator);
-    }
-    cudaMemcpy(tensor.data, array, tensor.size, cudaMemcpyHostToDevice);
-    free(array);
-    return tensor;
-}
-
-void prepare_broadcast(const Tensor& tensor1, const Tensor& tensor2, size_t** d_tensor1_strides, size_t** d_tensor2_strides, size_t** d_strides, Tensor& sum){
-    std::vector<int> shape{ tensor1.shape };
-    size_t tensor1_strides[tensor1.rank]{ 0 };
-    size_t tensor2_strides[tensor2.rank]{ 0 };
-    for (int i = 0; i < tensor1.rank; ++i) {
-        if (tensor1.shape[i] == tensor2.shape[i]) {
-            tensor1_strides[i] = tensor1.strides[i];
-            tensor2_strides[i] = tensor2.strides[i];
-        }
-        else if (tensor1.shape[i] > tensor2.shape[i]) {
-            tensor1_strides[i] = tensor1.strides[i];
-        }
-        else {
-            tensor2_strides[i] = tensor2.strides[i];
-            shape[i] = tensor2.shape[i];
-        }
-
-    }
-    sum = Tensor{ shape };
-    const size_t strides_size = sum.rank * sizeof(size_t);
-    cudaMalloc(d_strides, strides_size);
-    cudaMalloc(d_tensor1_strides, strides_size);
-    cudaMalloc(d_tensor2_strides, strides_size);
-    cudaMemcpy(*d_strides, &sum.strides[0], strides_size, cudaMemcpyHostToDevice);
-    cudaMemcpy(*d_tensor1_strides, tensor1_strides, strides_size, cudaMemcpyHostToDevice);
-    cudaMemcpy(*d_tensor2_strides, tensor2_strides, strides_size, cudaMemcpyHostToDevice);
 }
