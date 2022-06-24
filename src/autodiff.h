@@ -61,6 +61,14 @@ private:
     virtual Tensor backward(const Tensor& gradients, size_t input_index) const;
 };
 
+class SquareBackward : public Backward
+{
+public:
+    SquareBackward(const Tensor& tensor, Backward* backward);
+private:
+    virtual Tensor backward(const Tensor& gradients, size_t input_index) const;
+};
+
 class SumBackward : public Backward
 {
 public:

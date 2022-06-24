@@ -82,6 +82,13 @@ void negate(size_t n, float* input, float* output)
 }
 
 __global__
+void square(size_t n, float* input, float* output)
+{
+  const size_t index = blockIdx.x * blockDim.x + threadIdx.x;
+  if (index < n) output[index] = input[index] * input[index];
+}
+
+__global__
 void sum(size_t n, float* input, float* output)
 {
   float sum{ 0 };

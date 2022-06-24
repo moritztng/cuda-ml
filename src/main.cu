@@ -1,8 +1,7 @@
-#include "tensor.h"
+#include "network.h"
 
 int main()
 {
-    Tensor tensor{ Tensor::from_scalar(1, {2, 2}) };
-    std::cout << tensor;
+    MultiLayerPerceptron network{3, {6, 12, 6, 3}};
     return 0;
 }

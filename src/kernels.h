@@ -6,6 +6,7 @@ __global__ void multiply(size_t n, size_t rank, size_t* tensor1_strides, size_t*
 __global__ void divide(size_t n, size_t rank, size_t* tensor1_strides, size_t* tensor2_strides, size_t* strides, float* tensor1, float* tensor2, float* quotient);
 __global__ void matrix_multiply(size_t rank, size_t height, size_t width, size_t shared_dim, size_t* tensor1_strides, size_t* tensor2_strides, float* tensor1, float* tensor2, float* matrix_product);
 __global__ void negate(size_t n, float* input, float* output);
+__global__ void square(size_t n, float* input, float* output);
 __global__ void sum(size_t n, float* input, float* output);
 __global__ void relu(size_t n, float* input, float* output);
 __global__ void relu_d(size_t n, float* input, float* output);
