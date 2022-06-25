@@ -1,3 +1,5 @@
+#pragma once
+
 #include <vector>
 #include <initializer_list>
 #include "tensor.h"
@@ -7,6 +9,7 @@ class Module
 public:
     virtual Tensor operator() (const Tensor& input) const = 0;
     virtual std::vector<Tensor*> parameters();
+    void requires_gradients();
 };
 
 class Linear : public Module

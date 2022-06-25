@@ -5,6 +5,12 @@ std::vector<Tensor*> Module::parameters() {
     return {};
 }
 
+void Module::requires_gradients() {
+    for (Tensor* parameter : parameters()) {
+        parameter->requires_gradients();
+    }
+}
+
 Linear::Linear(size_t input_dim, size_t output_dim) :
     weights{ Tensor::random_normal(0, std::sqrt(2. / input_dim), {static_cast<int>(input_dim), static_cast<int>(output_dim)}) },
     bias{ Tensor::from_scalar(0, {1, static_cast<int>(output_dim)}) } {}
