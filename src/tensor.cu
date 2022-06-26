@@ -46,11 +46,15 @@ void Tensor::requires_gradients() {
     backward_pointer = new AccumulateGradients{};
 }
 
+void Tensor::backward() const {
+    backward(Tensor::from_scalar(1, shape));
+}
+
 void Tensor::backward(const Tensor& gradients) const {
     (*backward_pointer)(gradients);
 }
 
-Tensor Tensor::gradients() const {
+Tensor& Tensor::gradients() const {
     return backward_pointer->tensors[0];
 }
 
@@ -96,6 +100,15 @@ Tensor Tensor::random_normal(float mean, float standard_deviation, const std::ve
     return tensor;
 }
 
+void Tensor::fill (float scalar) {
+    fill_scalar<<<(n_elements + 255) / 256, 256>>>(n_elements, scalar, data);
+}
+
+Tensor& Tensor::operator-= (const Tensor& tensor) {
+    subtract<<<(n_elements + 255) / 256, 256>>>(n_elements, data, tensor.data, data);
+    return *this;
+}
+
 Tensor operator- (const Tensor& input) {
     Tensor output{ input.shape };
     negate<<<(output.n_elements + 255) / 256, 256>>>(output.n_elements, input.data, output.data);
@@ -123,7 +136,6 @@ Tensor operator- (const Tensor& tensor1, const Tensor& tensor2) {
     subtract<<<(difference.n_elements + 255) / 256, 256>>>(difference.n_elements, difference.rank, tensor1_strides, tensor2_strides, strides, tensor1.data, tensor2.data, difference.data);
     if (tensor1.backward_pointer || tensor2.backward_pointer) difference.backward_pointer = new SubtractBackward{ {tensor1.backward_pointer, tensor2.backward_pointer} };
     return difference;
-
 }
 
 Tensor operator* (const Tensor& tensor1, const Tensor& tensor2) {

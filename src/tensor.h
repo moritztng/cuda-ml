@@ -20,8 +20,11 @@ public:
     float operator[] (const std::vector<int>& indices) const;
     Tensor transpose(size_t dim1, size_t dim2) const;
     void requires_gradients();
+    void backward() const;
     void backward(const Tensor& gradients) const;
-    Tensor gradients() const;
+    Tensor& gradients() const;
+    void fill(float scalar);
+    Tensor& operator-= (const Tensor& tensor);
     friend Tensor operator- (const Tensor& input);
     friend Tensor operator+ (const Tensor& tensor1, const Tensor& tensor2);
     friend Tensor operator- (const Tensor& tensor1, const Tensor& tensor2);

@@ -1,5 +1,12 @@
 #include "kernels.h"
 
+__global__
+void fill_scalar(size_t n, float scalar, float* output)
+{
+  const int index = blockIdx.x * blockDim.x + threadIdx.x;
+  if (index < n) output[index] = scalar;
+}
+
 __device__
 void get_indices(size_t index, size_t rank, size_t* strides1, size_t* strides2, size_t* strides, size_t* indices)
 {
@@ -34,6 +41,13 @@ void subtract(size_t n, size_t rank, size_t* tensor1_strides, size_t* tensor2_st
       get_indices(index, rank, tensor1_strides, tensor2_strides, strides, indices);
       difference[index] = tensor1[indices[0]] - tensor2[indices[1]];
   }
+}
+
+__global__
+void subtract(size_t n, float* tensor1, float* tensor2, float* difference)
+{
+  const int index = blockIdx.x * blockDim.x + threadIdx.x;
+  if (index < n) difference[index] = tensor1[index] - tensor2[index];
 }
 
 __global__
