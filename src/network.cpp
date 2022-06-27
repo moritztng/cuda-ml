@@ -5,15 +5,15 @@ std::vector<Tensor*> Module::parameters() {
     return {};
 }
 
-void Module::requires_gradients() {
-    for (Tensor* parameter : parameters()) {
-        parameter->requires_gradients();
+Linear::Linear(size_t input_dim, size_t output_dim, bool requires_gradients) :
+    weights{ Tensor::random_normal(0, std::sqrt(2. / input_dim), {static_cast<int>(input_dim), static_cast<int>(output_dim)}) },
+    bias{ Tensor::from_scalar(0, {1, static_cast<int>(output_dim)}) } 
+{
+    if (requires_gradients) {
+        weights.requires_gradients();
+        bias.requires_gradients(true);
     }
 }
-
-Linear::Linear(size_t input_dim, size_t output_dim) :
-    weights{ Tensor::random_normal(0, std::sqrt(2. / input_dim), {static_cast<int>(input_dim), static_cast<int>(output_dim)}) },
-    bias{ Tensor::from_scalar(0, {1, static_cast<int>(output_dim)}) } {}
 
 Tensor Linear::operator() (const Tensor& input) const {
     return mm(input, weights) + bias;
@@ -27,10 +27,10 @@ Tensor ReLU::operator() (const Tensor& input) const {
     return relu(input);
 }
 
-MultiLayerPerceptron::MultiLayerPerceptron(size_t input_layer_dim, std::initializer_list<size_t> layer_dims) {
+MultiLayerPerceptron::MultiLayerPerceptron(size_t input_layer_dim, std::initializer_list<size_t> layer_dims, bool requires_gradients) {
     size_t input_dim{ input_layer_dim };
     for (size_t output_dim : layer_dims) {
-        const Linear linear_layer{ input_dim, output_dim };
+        const Linear linear_layer{ input_dim, output_dim, requires_gradients };
         linear_layers.push_back(linear_layer);
         input_dim = output_dim;
     }
@@ -38,10 +38,11 @@ MultiLayerPerceptron::MultiLayerPerceptron(size_t input_layer_dim, std::initiali
 
 Tensor MultiLayerPerceptron::operator() (const Tensor& input) const {
     Tensor output{ input };
-    for (Linear linear_layer : linear_layers) {
-        output = linear_layer(output);
+    for (int i = 0; i < linear_layers.size() - 1; ++i) {
+        output = linear_layers[i](output);
         output = relu_layer(output);
     }
+    output = linear_layers.back()(output);
     return output;
 }
 

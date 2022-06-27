@@ -19,7 +19,7 @@ public:
     Tensor(const std::vector<int>& shape);
     float operator[] (const std::vector<int>& indices) const;
     Tensor transpose(size_t dim1, size_t dim2) const;
-    void requires_gradients();
+    void requires_gradients(bool sum = false);
     void backward() const;
     void backward(const Tensor& gradients) const;
     Tensor& gradients() const;
@@ -35,6 +35,7 @@ public:
     friend Tensor relu_d (const Tensor& input);
     friend Tensor square(const Tensor& input);
     friend Tensor sum (const Tensor& input);
+    friend Tensor batch_sum (const Tensor& input);
     friend std::ostream& operator<< (std::ostream& out, const Tensor& tensor);
     static Tensor from_vector(const std::vector<float>& vector, const std::vector<int>& shape);
     static Tensor from_scalar(float scalar, const std::vector<int>& shape);

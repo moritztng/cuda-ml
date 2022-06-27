@@ -10,5 +10,6 @@ __global__ void matrix_multiply(size_t rank, size_t height, size_t width, size_t
 __global__ void negate(size_t n, float* input, float* output);
 __global__ void square(size_t n, float* input, float* output);
 __global__ void sum(size_t n, float* input, float* output);
+__global__ void batch_sum(size_t n, size_t batch_size, size_t stride, float* input, float* output);
 __global__ void relu(size_t n, float* input, float* output);
 __global__ void relu_d(size_t n, float* input, float* output);

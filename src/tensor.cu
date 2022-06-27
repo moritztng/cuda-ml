@@ -42,8 +42,8 @@ Tensor Tensor::transpose(size_t dim1, size_t dim2) const {
     return transpose;
 }
 
-void Tensor::requires_gradients() {
-    backward_pointer = new AccumulateGradients{};
+void Tensor::requires_gradients(bool sum) {
+    backward_pointer = new AccumulateGradients{ sum };
 }
 
 void Tensor::backward() const {
@@ -204,7 +204,13 @@ Tensor square (const Tensor& input) {
 Tensor sum (const Tensor& input) {
     Tensor output{ std::vector<int>(input.rank, 1) };
     sum<<<1, 1>>>(input.n_elements, input.data, output.data);
-    if (input.backward_pointer) output.backward_pointer = new SumBackward{ input.backward_pointer };
+    if (input.backward_pointer) output.backward_pointer = new SumBackward{ input.shape, input.backward_pointer };
+    return output;
+}
+
+Tensor batch_sum (const Tensor& input) {
+    Tensor output{ {1, input.shape.back()} };
+    batch_sum<<<(output.n_elements + 255) / 256, 256>>>(output.n_elements, input.shape[0], input.shape.back(), input.data, output.data);
     return output;
 }
 

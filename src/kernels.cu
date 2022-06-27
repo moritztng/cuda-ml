@@ -113,6 +113,19 @@ void sum(size_t n, float* input, float* output)
 }
 
 __global__
+void batch_sum(size_t n, size_t batch_size, size_t stride, float* input, float* output)
+{
+  const size_t index = blockIdx.x * blockDim.x + threadIdx.x;
+  if (index < n) {
+      float sum{ 0 };
+      for (int i = 0; i < batch_size; ++i) {
+          sum += input[i * stride + index];
+      }
+      output[index] = sum;
+  }
+}
+
+__global__
 void relu(size_t n, float* input, float* output)
 {
   const int i = blockIdx.x * blockDim.x + threadIdx.x;

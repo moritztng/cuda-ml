@@ -12,9 +12,11 @@ void Backward::operator() (const Tensor& gradients) {
 }
 Tensor Backward::backward(const Tensor& gradients, size_t input_index) const { return gradients; }
 
+AccumulateGradients::AccumulateGradients(bool sum) : sum{ sum } {}
 void AccumulateGradients::operator() (const Tensor& gradients) {
-    if (tensors.size()) tensors[0] = tensors[0] + gradients;
-    else tensors.push_back(gradients);
+    const Tensor accumulate_gradients{ sum ? batch_sum(gradients) : gradients };
+    if (tensors.size()) tensors[0] = tensors[0] + accumulate_gradients;
+    else tensors.push_back(accumulate_gradients);
 }
 
 AddBackward::AddBackward(const std::vector<Backward*>& backwards) : Backward{ backwards } {}
@@ -50,7 +52,10 @@ Tensor SquareBackward::backward(const Tensor& gradients, size_t input_index) con
     return Tensor::from_scalar(2, std::vector<int>(tensors[0].rank, 1)) * tensors[0] * gradients;
 }
 
-SumBackward::SumBackward(Backward* backward) : Backward{ {backward} } {}
+SumBackward::SumBackward(const std::vector<int>& shape, Backward* backward) : shape{ shape }, Backward{ {backward} } {}
+Tensor SumBackward::backward(const Tensor& gradients, size_t input_index) const {
+    return Tensor::from_scalar(gradients[std::vector<int>(gradients.rank, 0)], shape);
+}
 
 ReluBackward::ReluBackward(const Tensor& tensor, Backward* backward) : Backward{ {tensor}, {backward} } {}
 Tensor ReluBackward::backward(const Tensor& gradients, size_t input_index) const {

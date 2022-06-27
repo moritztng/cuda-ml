@@ -20,6 +20,8 @@ private:
 class AccumulateGradients : public Backward
 {
 public:
+    const bool sum{};
+    AccumulateGradients(bool sum = false);
     virtual void operator() (const Tensor& gradients);
 };
 
@@ -72,7 +74,10 @@ private:
 class SumBackward : public Backward
 {
 public:
-    SumBackward(Backward* backward);
+    const std::vector<int> shape{};
+    SumBackward(const std::vector<int>& shape, Backward* backward);
+private:
+    virtual Tensor backward(const Tensor& gradients, size_t input_index) const;    
 };
 
 class ReluBackward : public Backward
