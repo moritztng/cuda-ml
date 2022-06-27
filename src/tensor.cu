@@ -25,6 +25,9 @@ Tensor::Tensor(const std::vector<int>& shape) :
         stride *= shape[i];
     }
 }
+Tensor::~Tensor() {
+    cudaFree(data);
+}
 
 float Tensor::operator[] (const std::vector<int>& indices) const {
     float scalar;
