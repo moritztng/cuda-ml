@@ -46,6 +46,11 @@ void Tensor::requires_gradients(bool sum) {
     backward_pointer = new AccumulateGradients{ sum };
 }
 
+void Tensor::detach() {
+    delete backward_pointer;
+    backward_pointer = 0;   
+}
+
 void Tensor::backward() const {
     backward(Tensor::from_scalar(1, shape));
 }

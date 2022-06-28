@@ -9,6 +9,7 @@ class Module
 public:
     virtual Tensor operator() (const Tensor& input) const = 0;
     virtual std::vector<Tensor*> parameters();
+    void detach();
 };
 
 class Linear : public Module

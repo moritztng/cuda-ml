@@ -21,6 +21,7 @@ public:
     float operator[] (const std::vector<int>& indices) const;
     Tensor transpose(size_t dim1, size_t dim2) const;
     void requires_gradients(bool sum = false);
+    void detach();
     void backward() const;
     void backward(const Tensor& gradients) const;
     Tensor& gradients() const;
