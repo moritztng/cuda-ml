@@ -22,5 +22,7 @@ int main()
         optimizer.step();
         optimizer.zero_gradients();
     }
+    Tensor predictions{ network(coordinates) };
+    write_image("reconstruction.png", predictions, height, width);
     return 0;
 }

@@ -25,6 +25,31 @@ void read_image(const std::string& path, Tensor& tensor, int& height, int& width
     tensor = Tensor::from_vector(vector, {height * width, 3});
 }
 
+void write_image(const std::string& path, Tensor& tensor, int height, int width) {
+    FILE* file_pointer = fopen(path.c_str(), "wb");
+    png_structp png_pointer = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+    png_infop info_pointer = png_create_info_struct(png_pointer);
+    png_init_io(png_pointer, file_pointer);
+    png_set_IHDR(png_pointer, info_pointer, width, height,
+        8, PNG_COLOR_TYPE_RGB, PNG_INTERLACE_NONE,
+        PNG_COMPRESSION_TYPE_BASE, PNG_FILTER_TYPE_BASE);
+    png_write_info(png_pointer, info_pointer);
+    png_bytep* row_pointers = (png_bytep*) malloc(sizeof(png_bytep) * height);
+    for (int y = 0; y < height; ++y) {
+        png_byte* row = (png_byte*) malloc(png_get_rowbytes(png_pointer, info_pointer));
+        row_pointers[y] = row;
+        for (int x = 0; x < width * 3; ++x) {
+            row[x] = static_cast<png_byte>(tensor[{(y * width + x) / 3, x % 3}]);
+        }
+    }
+    png_write_image(png_pointer, row_pointers);
+    png_write_end(png_pointer, NULL);
+    for (int y = 0; y < height; ++y)
+        free(row_pointers[y]);
+    free(row_pointers);
+    fclose(file_pointer);
+}
+
 void create_coordinates(int height, int width, Tensor& tensor) {
     std::vector<float> vector{};
     for (int y = 0; y < height; ++y) {

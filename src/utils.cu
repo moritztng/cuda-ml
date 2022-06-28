@@ -29,3 +29,9 @@ void prepare_broadcast(const Tensor& tensor1, const Tensor& tensor2, size_t** d_
     cudaMemcpy(*d_tensor1_strides, tensor1_strides, strides_size, cudaMemcpyHostToDevice);
     cudaMemcpy(*d_tensor2_strides, tensor2_strides, strides_size, cudaMemcpyHostToDevice);
 }
+
+float* dataMalloc(size_t size) {
+    float* data;
+    cudaMalloc(&data, size);
+    return data;
+}

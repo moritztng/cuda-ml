@@ -16,23 +16,20 @@ Tensor::Tensor(const std::vector<int>& shape) :
     rank{ shape.size() },
     strides( rank ),
     n_elements{ std::accumulate(shape.begin(), shape.end(), static_cast<size_t>(1), std::multiplies<size_t>()) },
-    size{ n_elements * sizeof(float) }
+    size{ n_elements * sizeof(float) },
+    data{ dataMalloc(size), [](float* data){cudaFree(data);} }
 {
-    cudaMalloc(&data, size);
     size_t stride = 1;
     for (int i = rank - 1; i >= 0; --i) {
         strides[i] = stride;
         stride *= shape[i];
     }
 }
-Tensor::~Tensor() {
-    cudaFree(data);
-}
 
 float Tensor::operator[] (const std::vector<int>& indices) const {
     float scalar;
     const size_t index{ std::inner_product(strides.begin(), strides.end(), indices.begin(), static_cast<size_t>(0)) };
-    cudaMemcpy(&scalar, data + index, sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(&scalar, data.get() + index, sizeof(float), cudaMemcpyDeviceToHost);
     return scalar;
 }
 
@@ -65,7 +62,7 @@ Tensor Tensor::from_vector(const std::vector<float>& vector, const std::vector<i
     Tensor tensor{ shape };
     float* array = (float*)malloc(tensor.size);
     std::copy(vector.begin(), vector.end(), array);
-    cudaMemcpy(tensor.data, array, tensor.size, cudaMemcpyHostToDevice);
+    cudaMemcpy(tensor.data.get(), array, tensor.size, cudaMemcpyHostToDevice);
     free(array);
     return tensor;
 }
@@ -74,7 +71,7 @@ Tensor Tensor::from_scalar(float scalar, const std::vector<int>& shape) {
     Tensor tensor{ shape };
     float* array = (float*)malloc(tensor.size);
     std::fill_n(array, tensor.n_elements, scalar);
-    cudaMemcpy(tensor.data, array, tensor.size, cudaMemcpyHostToDevice);
+    cudaMemcpy(tensor.data.get(), array, tensor.size, cudaMemcpyHostToDevice);
     free(array);
     return tensor;    
 }
@@ -86,7 +83,7 @@ Tensor Tensor::random_uniform(float min, float max, const std::vector<int>& shap
     for (int i = 0; i < tensor.n_elements; ++i) {
         array[i] = distribution(random_number_generator);
     }
-    cudaMemcpy(tensor.data, array, tensor.size, cudaMemcpyHostToDevice);
+    cudaMemcpy(tensor.data.get(), array, tensor.size, cudaMemcpyHostToDevice);
     free(array);
     return tensor;    
 }
@@ -98,23 +95,23 @@ Tensor Tensor::random_normal(float mean, float standard_deviation, const std::ve
     for (int i = 0; i < tensor.n_elements; ++i) {
         array[i] = distribution(random_number_generator);
     }
-    cudaMemcpy(tensor.data, array, tensor.size, cudaMemcpyHostToDevice);
+    cudaMemcpy(tensor.data.get(), array, tensor.size, cudaMemcpyHostToDevice);
     free(array);
     return tensor;
 }
 
 void Tensor::fill (float scalar) {
-    fill_scalar<<<(n_elements + 255) / 256, 256>>>(n_elements, scalar, data);
+    fill_scalar<<<(n_elements + 255) / 256, 256>>>(n_elements, scalar, data.get());
 }
 
 Tensor& Tensor::operator-= (const Tensor& tensor) {
-    subtract<<<(n_elements + 255) / 256, 256>>>(n_elements, data, tensor.data, data);
+    subtract<<<(n_elements + 255) / 256, 256>>>(n_elements, data.get(), tensor.data.get(), data.get());
     return *this;
 }
 
 Tensor operator- (const Tensor& input) {
     Tensor output{ input.shape };
-    negate<<<(output.n_elements + 255) / 256, 256>>>(output.n_elements, input.data, output.data);
+    negate<<<(output.n_elements + 255) / 256, 256>>>(output.n_elements, input.data.get(), output.data.get());
     if (input.backward_pointer) output.backward_pointer = new NegateBackward{ input.backward_pointer };
     return output;
 }
@@ -125,7 +122,7 @@ Tensor operator+ (const Tensor& tensor1, const Tensor& tensor2) {
     size_t* strides{};
     Tensor sum{};
     prepare_broadcast(tensor1, tensor2, &tensor1_strides, &tensor2_strides, &strides, sum);
-    add<<<(sum.n_elements + 255) / 256, 256>>>(sum.n_elements, sum.rank, tensor1_strides, tensor2_strides, strides, tensor1.data, tensor2.data, sum.data);
+    add<<<(sum.n_elements + 255) / 256, 256>>>(sum.n_elements, sum.rank, tensor1_strides, tensor2_strides, strides, tensor1.data.get(), tensor2.data.get(), sum.data.get());
     if (tensor1.backward_pointer || tensor2.backward_pointer) sum.backward_pointer = new AddBackward{ {tensor1.backward_pointer, tensor2.backward_pointer} };
     return sum;
 }
@@ -136,7 +133,7 @@ Tensor operator- (const Tensor& tensor1, const Tensor& tensor2) {
     size_t* strides{};
     Tensor difference{};
     prepare_broadcast(tensor1, tensor2, &tensor1_strides, &tensor2_strides, &strides, difference);
-    subtract<<<(difference.n_elements + 255) / 256, 256>>>(difference.n_elements, difference.rank, tensor1_strides, tensor2_strides, strides, tensor1.data, tensor2.data, difference.data);
+    subtract<<<(difference.n_elements + 255) / 256, 256>>>(difference.n_elements, difference.rank, tensor1_strides, tensor2_strides, strides, tensor1.data.get(), tensor2.data.get(), difference.data.get());
     if (tensor1.backward_pointer || tensor2.backward_pointer) difference.backward_pointer = new SubtractBackward{ {tensor1.backward_pointer, tensor2.backward_pointer} };
     return difference;
 }
@@ -147,7 +144,7 @@ Tensor operator* (const Tensor& tensor1, const Tensor& tensor2) {
     size_t* strides{};
     Tensor product{};
     prepare_broadcast(tensor1, tensor2, &tensor1_strides, &tensor2_strides, &strides, product);
-    multiply<<<(product.n_elements + 255) / 256, 256>>>(product.n_elements, product.rank, tensor1_strides, tensor2_strides, strides, tensor1.data, tensor2.data, product.data);
+    multiply<<<(product.n_elements + 255) / 256, 256>>>(product.n_elements, product.rank, tensor1_strides, tensor2_strides, strides, tensor1.data.get(), tensor2.data.get(), product.data.get());
     if (tensor1.backward_pointer || tensor2.backward_pointer) product.backward_pointer = new MultiplyBackward{ {tensor1, tensor2}, {tensor1.backward_pointer, tensor2.backward_pointer} };
     return product;
 }
@@ -158,7 +155,7 @@ Tensor operator/ (const Tensor& tensor1, const Tensor& tensor2) {
     size_t* strides{};
     Tensor quotient{};
     prepare_broadcast(tensor1, tensor2, &tensor1_strides, &tensor2_strides, &strides, quotient);
-    divide<<<(quotient.n_elements + 255) / 256, 256>>>(quotient.n_elements, quotient.rank, tensor1_strides, tensor2_strides, strides, tensor1.data, tensor2.data, quotient.data);
+    divide<<<(quotient.n_elements + 255) / 256, 256>>>(quotient.n_elements, quotient.rank, tensor1_strides, tensor2_strides, strides, tensor1.data.get(), tensor2.data.get(), quotient.data.get());
     return quotient;
 }
 
@@ -179,41 +176,41 @@ Tensor mm (const Tensor& tensor1, const Tensor& tensor2) {
     cudaMemcpy(tensor2_strides, &tensor2.strides[0], strides_size, cudaMemcpyHostToDevice);
     dim3 block_dim(16, 16);
     dim3 grid_dim((height + block_dim.x - 1) / block_dim.x, (width + block_dim.y - 1) / block_dim.y, batch_size);
-    matrix_multiply<<<grid_dim, block_dim>>>(matrix_product.rank, height, width, shared_dim, tensor1_strides, tensor2_strides, tensor1.data, tensor2.data, matrix_product.data);
+    matrix_multiply<<<grid_dim, block_dim>>>(matrix_product.rank, height, width, shared_dim, tensor1_strides, tensor2_strides, tensor1.data.get(), tensor2.data.get(), matrix_product.data.get());
     if (tensor1.backward_pointer || tensor2.backward_pointer) matrix_product.backward_pointer = new MatrixMultiplyBackward{ {tensor1, tensor2}, {tensor1.backward_pointer, tensor2.backward_pointer} };
     return matrix_product;
 }
 
 Tensor relu (const Tensor& input) {
     Tensor output{ input.shape };
-    relu<<<(output.n_elements + 255) / 256, 256>>>(output.n_elements, input.data, output.data);
+    relu<<<(output.n_elements + 255) / 256, 256>>>(output.n_elements, input.data.get(), output.data.get());
     if (input.backward_pointer) output.backward_pointer = new ReluBackward{ input, input.backward_pointer };
     return output;
 }
 
 Tensor relu_d (const Tensor& input) {
     Tensor output{ input.shape };
-    relu_d<<<(output.n_elements + 255) / 256, 256>>>(output.n_elements, input.data, output.data);
+    relu_d<<<(output.n_elements + 255) / 256, 256>>>(output.n_elements, input.data.get(), output.data.get());
     return output;
 }
 
 Tensor square (const Tensor& input) {
     Tensor output{ input.shape };
-    square<<<(output.n_elements + 255) / 256, 256>>>(output.n_elements, input.data, output.data);
+    square<<<(output.n_elements + 255) / 256, 256>>>(output.n_elements, input.data.get(), output.data.get());
     if (input.backward_pointer) output.backward_pointer = new SquareBackward{ input, input.backward_pointer };
     return output;
 }
 
 Tensor sum (const Tensor& input) {
     Tensor output{ std::vector<int>(input.rank, 1) };
-    sum<<<1, 1>>>(input.n_elements, input.data, output.data);
+    sum<<<1, 1>>>(input.n_elements, input.data.get(), output.data.get());
     if (input.backward_pointer) output.backward_pointer = new SumBackward{ input.shape, input.backward_pointer };
     return output;
 }
 
 Tensor batch_sum (const Tensor& input) {
     Tensor output{ {1, input.shape.back()} };
-    batch_sum<<<(output.n_elements + 255) / 256, 256>>>(output.n_elements, input.shape[0], input.shape.back(), input.data, output.data);
+    batch_sum<<<(output.n_elements + 255) / 256, 256>>>(output.n_elements, input.shape[0], input.shape.back(), input.data.get(), output.data.get());
     return output;
 }
 

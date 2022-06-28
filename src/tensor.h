@@ -2,12 +2,13 @@
 
 #include <vector>
 #include <iostream>
+#include <memory>
 
 class Backward;
 
 class Tensor {
 private:
-    float* data{};
+    std::shared_ptr<float> data{};
 public:
     std::vector<int> shape{};
     size_t rank{};
@@ -17,7 +18,6 @@ public:
     Backward* backward_pointer{};
     Tensor();
     Tensor(const std::vector<int>& shape);
-    ~Tensor();
     float operator[] (const std::vector<int>& indices) const;
     Tensor transpose(size_t dim1, size_t dim2) const;
     void requires_gradients(bool sum = false);
