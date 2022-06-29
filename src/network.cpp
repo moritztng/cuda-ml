@@ -7,7 +7,7 @@ std::vector<Tensor*> Module::parameters() {
 
 void Module::detach() {
     for (Tensor* parameter : parameters()) {
-        parameter->detach();
+        parameter->backward_pointer = nullptr;
     }
 }
 
