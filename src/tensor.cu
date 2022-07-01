@@ -184,7 +184,7 @@ Tensor mm (const Tensor& tensor1, const Tensor& tensor2) {
     dim3 block_dim(16, 16);
     dim3 grid_dim((height + block_dim.x - 1) / block_dim.x, (width + block_dim.y - 1) / block_dim.y, batch_size);
     matrix_multiply<<<grid_dim, block_dim>>>(matrix_product.rank, height, width, shared_dim, tensor1_strides, tensor2_strides, tensor1.data.get(), tensor2.data.get(), matrix_product.data.get());
-    if (tensor1.backward_pointer || tensor2.backward_pointer) matrix_product.backward_pointer = std::shared_ptr<Backward>{ new MatrixMultiplyBackward{ {tensor1, tensor2}, {tensor1.backward_pointer, tensor2.backward_pointer} } };
+    if (tensor1.backward_pointer || tensor2.backward_pointer) matrix_product.backward_pointer = std::shared_ptr<Backward>{ new MatrixMultiplyBackward{ {tensor1.detach(), tensor2.detach()}, {tensor1.backward_pointer, tensor2.backward_pointer} } };
     return matrix_product;
 }
 
