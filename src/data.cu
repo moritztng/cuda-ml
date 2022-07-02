@@ -61,15 +61,6 @@ void create_coordinates(int height, int width, Tensor& tensor) {
     tensor = Tensor::from_vector(vector, {height * width, 2});
 }
 
-void get_batch(size_t index, size_t batch_size, const Tensor& inputs, const Tensor& outputs, Tensor& inputs_batch, Tensor& outputs_batch) {
-    std::vector<int> inputs_shape{ inputs.shape };
-    const int rest = inputs_shape[0] - index * batch_size;
-    const int batch_n = batch_size < rest ? batch_size : rest;
-    inputs_shape[0] = batch_n;
-    inputs_batch = Tensor(inputs_shape);
-    cudaMemcpy(inputs_batch.data.get(), inputs.data.get() + index * batch_size * inputs.strides[0], inputs_batch.size, cudaMemcpyDeviceToDevice);
-    std::vector<int> outputs_shape{ outputs.shape };
-    outputs_shape[0] = batch_n;
-    outputs_batch = Tensor(outputs_shape);
-    cudaMemcpy(outputs_batch.data.get(), outputs.data.get() + index * batch_size * outputs.strides[0], outputs_batch.size, cudaMemcpyDeviceToDevice);
+void normalize(const std::vector<float>& max, Tensor& tensor) {
+    tensor = tensor / Tensor::from_vector(max, {1, static_cast<int>(max.size())});
 }
