@@ -1,5 +1,7 @@
+#include <vector>
 #include <cmath>
 #include "network.h"
+#include "tensor.h"
 
 std::vector<Tensor*> Module::parameters() {
     return {};

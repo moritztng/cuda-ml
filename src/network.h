@@ -4,16 +4,14 @@
 #include <initializer_list>
 #include "tensor.h"
 
-class Module 
-{
+class Module {
 public:
     virtual Tensor operator() (const Tensor& input) const = 0;
     virtual std::vector<Tensor*> parameters();
     void detach();
 };
 
-class Linear : public Module
-{
+class Linear : public Module {
 public:
     Tensor weights{};
     Tensor bias{};
@@ -22,14 +20,12 @@ public:
     virtual std::vector<Tensor*> parameters();
 };
 
-class ReLU : public Module
-{
+class ReLU : public Module {
 public:
     virtual Tensor operator() (const Tensor& input) const;
 };
 
-class MultiLayerPerceptron : public Module
-{
+class MultiLayerPerceptron : public Module {
 public:
     std::vector<Linear> linear_layers{};
     const ReLU relu_layer{};
