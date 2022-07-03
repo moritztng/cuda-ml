@@ -1,3 +1,4 @@
+#include <vector>
 #include "autodiff.h"
 #include "tensor.h"
 
