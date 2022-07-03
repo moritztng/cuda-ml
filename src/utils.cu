@@ -2,7 +2,7 @@
 #include "utils.h"
 #include "tensor.h"
 
-void prepare_broadcast(const Tensor& tensor1, const Tensor& tensor2, size_t** d_tensor1_strides, size_t** d_tensor2_strides, size_t** d_strides, Tensor& sum){
+void prepare_broadcast(const Tensor& tensor1, const Tensor& tensor2, size_t** d_tensor1_strides, size_t** d_tensor2_strides, size_t** d_strides, Tensor& sum) {
     std::vector<int> shape{ tensor1.shape };
     size_t tensor1_strides[tensor1.rank]{ 0 };
     size_t tensor2_strides[tensor2.rank]{ 0 };
