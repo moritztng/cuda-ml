@@ -1,12 +1,5 @@
 #include "kernels.h"
 
-__global__
-void fill_scalar(size_t n, float scalar, float* output)
-{
-  const int index = blockIdx.x * blockDim.x + threadIdx.x;
-  if (index < n) output[index] = scalar;
-}
-
 __device__
 void get_indices(size_t index, size_t rank, size_t* strides1, size_t* strides2, size_t* strides, size_t* indices)
 {
@@ -19,6 +12,13 @@ void get_indices(size_t index, size_t rank, size_t* strides1, size_t* strides2, 
         indices[0] += dim * strides1[i];
         indices[1] += dim * strides2[i];
     }
+}
+
+__global__
+void fill_scalar(size_t n, float scalar, float* output)
+{
+  const int index = blockIdx.x * blockDim.x + threadIdx.x;
+  if (index < n) output[index] = scalar;
 }
 
 __global__
