@@ -1,6 +1,6 @@
 #include <png.h>
-#include <string>
 #include <vector>
+#include <string>
 #include "data.h"
 #include "tensor.h"
 
@@ -22,8 +22,11 @@ void read_image(const std::string& path, Tensor& tensor, int& height, int& width
         for (int x = 0; x < width; ++x) {
             vector.push_back(static_cast<float>(row[x]));
         }
+        free(row);
     }
+    free(row_pointers);
     tensor = Tensor::from_vector(vector, {height * width, 1});
+    fclose(file_pointer);
 }
 
 void write_image(const std::string& path, Tensor& tensor, int height, int width) {
