@@ -1,8 +1,8 @@
+#include <vector>
+#include <memory>
+#include <random>
 #include <numeric>
 #include <functional>
-#include <algorithm>
-#include <random>
-#include <memory>
 #include "tensor.h"
 #include "kernels.h"
 #include "autodiff.h"
@@ -25,6 +25,48 @@ Tensor::Tensor(const std::vector<int>& shape) :
         strides[i] = stride;
         stride *= shape[i];
     }
+}
+
+Tensor Tensor::from_scalar(float scalar, const std::vector<int>& shape) {
+    Tensor tensor{ shape };
+    float* array = (float*)malloc(tensor.size);
+    std::fill_n(array, tensor.n_elements, scalar);
+    cudaMemcpy(tensor.data.get(), array, tensor.size, cudaMemcpyHostToDevice);
+    free(array);
+    return tensor;    
+}
+
+Tensor Tensor::from_vector(const std::vector<float>& vector, const std::vector<int>& shape) {
+    Tensor tensor{ shape };
+    float* array = (float*)malloc(tensor.size);
+    std::copy(vector.begin(), vector.end(), array);
+    cudaMemcpy(tensor.data.get(), array, tensor.size, cudaMemcpyHostToDevice);
+    free(array);
+    return tensor;
+}
+
+Tensor Tensor::random_uniform(float min, float max, const std::vector<int>& shape) {
+    Tensor tensor{ shape };
+    float* array = (float*)malloc(tensor.size);
+    std::uniform_real_distribution<float> distribution{ min, max };
+    for (int i = 0; i < tensor.n_elements; ++i) {
+        array[i] = distribution(random_number_generator);
+    }
+    cudaMemcpy(tensor.data.get(), array, tensor.size, cudaMemcpyHostToDevice);
+    free(array);
+    return tensor;    
+}
+
+Tensor Tensor::random_normal(float mean, float standard_deviation, const std::vector<int>& shape) {
+    Tensor tensor{ shape };
+    float* array = (float*)malloc(tensor.size);
+    std::normal_distribution<float> distribution{ mean, standard_deviation };
+    for (int i = 0; i < tensor.n_elements; ++i) {
+        array[i] = distribution(random_number_generator);
+    }
+    cudaMemcpy(tensor.data.get(), array, tensor.size, cudaMemcpyHostToDevice);
+    free(array);
+    return tensor;
 }
 
 float Tensor::operator[] (const std::vector<int>& indices) const {
@@ -63,48 +105,6 @@ void Tensor::backward(const Tensor& gradients) const {
 
 Tensor& Tensor::gradients() const {
     return backward_pointer->tensors[0];
-}
-
-Tensor Tensor::from_vector(const std::vector<float>& vector, const std::vector<int>& shape) {
-    Tensor tensor{ shape };
-    float* array = (float*)malloc(tensor.size);
-    std::copy(vector.begin(), vector.end(), array);
-    cudaMemcpy(tensor.data.get(), array, tensor.size, cudaMemcpyHostToDevice);
-    free(array);
-    return tensor;
-}
-
-Tensor Tensor::from_scalar(float scalar, const std::vector<int>& shape) {
-    Tensor tensor{ shape };
-    float* array = (float*)malloc(tensor.size);
-    std::fill_n(array, tensor.n_elements, scalar);
-    cudaMemcpy(tensor.data.get(), array, tensor.size, cudaMemcpyHostToDevice);
-    free(array);
-    return tensor;    
-}
-
-Tensor Tensor::random_uniform(float min, float max, const std::vector<int>& shape) {
-    Tensor tensor{ shape };
-    float* array = (float*)malloc(tensor.size);
-    std::uniform_real_distribution<float> distribution{ min, max };
-    for (int i = 0; i < tensor.n_elements; ++i) {
-        array[i] = distribution(random_number_generator);
-    }
-    cudaMemcpy(tensor.data.get(), array, tensor.size, cudaMemcpyHostToDevice);
-    free(array);
-    return tensor;    
-}
-
-Tensor Tensor::random_normal(float mean, float standard_deviation, const std::vector<int>& shape) {
-    Tensor tensor{ shape };
-    float* array = (float*)malloc(tensor.size);
-    std::normal_distribution<float> distribution{ mean, standard_deviation };
-    for (int i = 0; i < tensor.n_elements; ++i) {
-        array[i] = distribution(random_number_generator);
-    }
-    cudaMemcpy(tensor.data.get(), array, tensor.size, cudaMemcpyHostToDevice);
-    free(array);
-    return tensor;
 }
 
 void Tensor::fill (float scalar) {
@@ -163,10 +163,15 @@ Tensor operator/ (const Tensor& tensor1, const Tensor& tensor2) {
     Tensor quotient{};
     prepare_broadcast(tensor1, tensor2, &tensor1_strides, &tensor2_strides, &strides, quotient);
     divide<<<(quotient.n_elements + 255) / 256, 256>>>(quotient.n_elements, quotient.rank, tensor1_strides, tensor2_strides, strides, tensor1.data.get(), tensor2.data.get(), quotient.data.get());
+    if (tensor1.backward_pointer || tensor2.backward_pointer) {
+        const Tensor tensor1_reciprocal{ Tensor::from_scalar(1, std::vector<int>(tensor1.rank, 1)) / tensor1.detach() };
+        const Tensor tensor2_reciprocal{ Tensor::from_scalar(1, std::vector<int>(tensor2.rank, 1)) / tensor2.detach() };
+        quotient.backward_pointer = std::shared_ptr<Backward>{ new MultiplyBackward{ {tensor1_reciprocal, tensor2_reciprocal}, {tensor1.backward_pointer, tensor2.backward_pointer} } };
+    }
     return quotient;
 }
 
-Tensor mm (const Tensor& tensor1, const Tensor& tensor2) {
+Tensor mm(const Tensor& tensor1, const Tensor& tensor2) {
     std::vector<int> shape{ tensor1.shape };
     shape.back() = tensor2.shape.back();
     Tensor matrix_product{ shape };
@@ -184,38 +189,40 @@ Tensor mm (const Tensor& tensor1, const Tensor& tensor2) {
     dim3 block_dim(16, 16);
     dim3 grid_dim((height + block_dim.x - 1) / block_dim.x, (width + block_dim.y - 1) / block_dim.y, batch_size);
     matrix_multiply<<<grid_dim, block_dim>>>(matrix_product.rank, height, width, shared_dim, tensor1_strides, tensor2_strides, tensor1.data.get(), tensor2.data.get(), matrix_product.data.get());
+    cudaFree(tensor1_strides);
+    cudaFree(tensor2_strides);
     if (tensor1.backward_pointer || tensor2.backward_pointer) matrix_product.backward_pointer = std::shared_ptr<Backward>{ new MatrixMultiplyBackward{ {tensor1.detach(), tensor2.detach()}, {tensor1.backward_pointer, tensor2.backward_pointer} } };
     return matrix_product;
 }
 
-Tensor relu (const Tensor& input) {
+Tensor relu(const Tensor& input) {
     Tensor output{ input.shape };
     relu<<<(output.n_elements + 255) / 256, 256>>>(output.n_elements, input.data.get(), output.data.get());
     if (input.backward_pointer) output.backward_pointer = std::shared_ptr<Backward>{ new ReluBackward{ input.detach(), input.backward_pointer } };
     return output;
 }
 
-Tensor relu_d (const Tensor& input) {
+Tensor relu_d(const Tensor& input) {
     Tensor output{ input.shape };
     relu_d<<<(output.n_elements + 255) / 256, 256>>>(output.n_elements, input.data.get(), output.data.get());
     return output;
 }
 
-Tensor square (const Tensor& input) {
+Tensor square(const Tensor& input) {
     Tensor output{ input.shape };
     square<<<(output.n_elements + 255) / 256, 256>>>(output.n_elements, input.data.get(), output.data.get());
     if (input.backward_pointer) output.backward_pointer = std::shared_ptr<Backward>{ new SquareBackward{ input.detach(), input.backward_pointer } };
     return output;
 }
 
-Tensor sum (const Tensor& input) {
+Tensor sum(const Tensor& input) {
     Tensor output{ std::vector<int>(input.rank, 1) };
     sum<<<1, 1>>>(input.n_elements, input.data.get(), output.data.get());
     if (input.backward_pointer) output.backward_pointer = std::shared_ptr<Backward>{ new SumBackward{ input.shape, input.backward_pointer } };
     return output;
 }
 
-Tensor batch_sum (const Tensor& input) {
+Tensor batch_sum(const Tensor& input) {
     Tensor output{ {1, input.shape.back()} };
     batch_sum<<<(output.n_elements + 255) / 256, 256>>>(output.n_elements, input.shape[0], input.shape.back(), input.data.get(), output.data.get());
     return output;
@@ -239,14 +246,7 @@ std::ostream& operator<< (std::ostream& out, const Tensor& tensor) {
     }
     out << '\n';
     out << "shape = (";
-    for (size_t dim: tensor.shape) out << dim << ", ";
-    out << "), ";
-    out << "rank = " << tensor.rank << ", ";
-    out << "strides = (";
-    for (size_t stride: tensor.strides) out << stride << ", ";
-    out << "), ";
-    out << "n_elements = " << tensor.n_elements << ", ";
-    out << "size = " << tensor.size << ", ";
-    out << '\n';
+    for (int dim : tensor.shape) out << dim << ", ";
+    out << ")\n";
     return out;
 }
