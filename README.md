@@ -5,7 +5,8 @@ cmake --build build
 sudo make install -C build
 ```
 
-## Learning an Image
+## Learning an Image 
+#### Coordinates &rarr; Color
 ```cpp
 #include <cuda-ml/cuda-ml.h>
 
@@ -19,9 +20,9 @@ normalize({255}, targets);
 normalize({static_cast<float>(height - 1), static_cast<float>(width - 1)}, coordinates);
 
 MultiLayerPerceptron network{2, {64, 1}};
-StochasticGradientDescent optimizer{network.parameters(), 0.01};
+StochasticGradientDescent optimizer{network.parameters(), 0.001};
 
-const size_t n_epochs{ 1000 };
+const size_t n_epochs{ 5000 };
 const size_t print_epochs{ 100 };
 for (int epoch = 0; epoch < n_epochs; ++epoch) {
     const Tensor predictions{ network(coordinates) };
@@ -30,12 +31,12 @@ for (int epoch = 0; epoch < n_epochs; ++epoch) {
     optimizer.step();
     optimizer.zero_gradients();
     if ((epoch + 1) % print_epochs == 0)
-        std::cout << "epoch " << epoch << " loss " << loss[{0, 0}] << '\n';
+        std::cout << "epoch " << epoch + 1 << " loss " << loss[{0, 0}] << '\n';
 }
 
 network.detach();
 Tensor predictions{ network(coordinates) };
-normalize({1 / 255}, predictions);
+normalize({1. / 255.}, predictions);
 write_image("reconstruction.png", predictions, height, width);
 ```
 
