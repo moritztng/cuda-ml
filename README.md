@@ -1,3 +1,5 @@
+Cuda-ml is a C++ machine learning framework with automatic differentiation and cuda acceleration. It is built completely from scratch with a custom tensor class and custom cuda kernels. Dynamic and eager execution are key properties of it's tapeless automatic differentiation. So the function is defined simply by running it and no forwards graph is built.
+
 ## Installation
 ```bash
 cmake . -B build
@@ -40,6 +42,13 @@ normalize({1. / 255.}, predictions);
 write_image("reconstruction.png", predictions, height, width);
 ```
 
+## Execution
+```bash
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib
+nvcc -o learn_image learn_image.cu -lpng -lcuda-ml
+./learn_image
+```
+
 ## Tensor Class
 ### Construction
 ```cpp
@@ -68,7 +77,7 @@ tensor[{1, 2}]
 
 ### Automatic Differentiation
 ```cpp
-tensor1.requires_gradient();
+tensor1.requires_gradients();
 product = tensor1 * tensor2;
 product.backward();
 gradients = tensor1.gradients();
