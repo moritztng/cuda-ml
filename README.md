@@ -1,4 +1,4 @@
-Cuda-ml is a C++ machine learning framework with automatic differentiation and cuda acceleration. It is built completely from scratch with a custom tensor class and custom cuda kernels. Dynamic and eager execution are key properties of it's tapeless automatic differentiation. So the function is defined simply by running it and no forwards graph is built.
+Cuda-ml is a C++ machine learning framework with automatic differentiation and cuda acceleration. It is built completely from scratch with a custom tensor class and custom cuda kernels. Dynamic and eager execution are key properties of its tapeless automatic differentiation. So the function is defined simply by running it and no forward graph is built.
 
 ## Installation
 ```bash
